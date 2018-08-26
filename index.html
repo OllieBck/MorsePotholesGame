@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Morse Pot Holes</title>
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.11.0/dist/phaser.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+        input{ /*borrowed from Morse Experiments https://github.com/googlecreativelab/morse-learn/blob/master/styles/style.scss */
+          left: -9999px;
+          position: absolute;
+          pointer-events: none;
+          z-index: -1;
+        }
+    </style>
+</head>
+<body>
+<input id="input" type="text" name="" value="" autofocus>
+    <script type="text/javascript">
+
+var config = {
+    type: Phaser.AUTO,
+    width: window.innerWidth,
+    height: 400,
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 300 },
+            debug: false
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+var player;
+var platforms;
+var cursors;
+var score = 0;
+var gameOver = false;
+var scoreText;
+var shortGap = 96;
+var longGap = shortGap*3;
+var roadStart = 50;
+var roadPositionMod = 96;
+var bridges;
+var bridgeNumber = [];
+var groundHeightOffset = 48;
+var scaleRoad = 4;
+
+var timedEvent;
+var truckVelocity = 30;
+
+function MorseLetter (letterName, _skipFirst, _skipFirstLong, _skipSecond, _skipSecondLong, _skipThird, _skipThirdLong, _skipFourth){
+    this._letterName = letterName;
+    this._skipFirst = _skipFirst;
+    this._skipFirstLong = _skipFirstLong;
+    this._skipSecond = _skipSecond;
+    this._skipSecondLong = _skipSecondLong;
+    this._skipThird = _skipThird;
+    this._skipThirdLong = _skipThirdLong;
+    this._skipFourth = _skipFourth;
+}
+
+// create the gaps in the road and bridges and letteers
+var abc = [
+    new MorseLetter('a', 3, 3, 5, 6, 3, 3, 3),
+    new MorseLetter('b', 3, 4, 6, 6, 8, 10, 3),
+    new MorseLetter('c', 3, 4, 6, 8, 9, 11, 3),
+    new MorseLetter('d', 3, 4, 6, 8, 3, 3, 3),
+    new MorseLetter('e', 3, 3, 3, 3, 3, 3, 3),
+    new MorseLetter('f', 3, 5, 7, 8, 10, 3, 3),
+    new MorseLetter('g', 3, 4, 6, 7, 9, 3, 3),
+    new MorseLetter('h', 3, 5, 7, 9, 3, 3),
+    new MorseLetter('i', 3, 5, 3, 3, 3, 3),
+    new MorseLetter('j', 3, 5, 6, 8, 9, 11, 12),
+    new MorseLetter('k', 3, 4, 6, 8, 9, 3),
+    new MorseLetter('l', 3, 5, 6, 8, 10, 3),
+    new MorseLetter('m', 3, 4, 6, 7, 3, 3),
+    new MorseLetter('n', 3, 4, 6, 3, 3, 3),
+    new MorseLetter('o', 3, 4, 6, 7, 9, 10, 3),
+    new MorseLetter('p', 3, 5, 6, 8, 9, 11, 3),
+    new MorseLetter('q', 3, 4, 6, 7, 9, 11, 12),
+    new MorseLetter('r', 3, 5, 6, 8, 3, 3, 3),
+    new MorseLetter('s', 3, 5, 7, 3, 3, 3, 3),
+    new MorseLetter('t', 3, 4, 3, 3, 3, 3, 3),
+    new MorseLetter('u', 3, 5, 7, 8, 3, 3, 3),
+    new MorseLetter('v', 3, 5, 7, 9, 10, 3, 3),
+    new MorseLetter('w', 3, 5, 6, 8, 9, 3, 3),
+    new MorseLetter('x', 3, 4, 6, 8, 10, 11, 3),
+    new MorseLetter('y', 3, 4, 6, 8, 9, 11, 12),
+    new MorseLetter('z', 3, 4, 6, 7, 9, 11, 3),
+ ]
+
+ var testLetter = 0;
+
+// create the gaps in the road and bridges
+var skipFirst;
+var skipFirstLong;
+var skipSecond;
+var skipSecondLong;
+var skipThird;
+var skipThirdLong;
+var skipFourth;
+
+var game = new Phaser.Game(config);
+
+function preload ()
+{
+    this.load.image('mountains', 'assets/mountains.png');
+    this.load.image('ground', 'assets/road.png');
+    this.load.image('truck', 'assets/truck.png');
+    this.load.image('bridge', 'assets/road.png')
+}
+
+function create ()
+{   
+    // create the gaps in the road and bridges
+    skipFirst = abc[testLetter]._skipFirst;
+    skipFirstLong = abc[testLetter]._skipFirstLong;
+    skipSecond = abc[testLetter]._skipSecond;
+    skipSecondLong = abc[testLetter]._skipSecondLong;
+    skipThird = abc[testLetter]._skipThird;
+    skipThirdLong = abc[testLetter]._skipThirdLong;
+    skipFourth = abc[testLetter]._skipFourth;
+
+    //  A simple background for our game
+    this.add.image(config.width/2, config.height/2, 'mountains').setScale(12);
+
+    //  The platforms group contains the ground and the 2 ledges we can jump on
+    platforms = this.physics.add.staticGroup();
+    bridges = this.physics.add.group();
+
+    //  Here we create the ground.
+    //  Scale it to fit the width of the game (the original sprite is 400x32 in size)
+    for (var i = 0; i < 20; i++){
+        if (i == skipFirst || i == skipFirstLong|| i == skipSecond || i == skipSecondLong || i == skipThird || i == skipThirdLong || i == skipFourth) { continue; }
+        platforms.create(roadStart+(roadPositionMod*i), config.height - groundHeightOffset, 'ground').setScale(scaleRoad).refreshBody();
+    }
+
+    // The player and its settings
+    player = this.physics.add.sprite(50, config.height - groundHeightOffset-80, 'truck').setScale(1.90);
+
+    for (var i = 0; i < 20; i++){
+        if(i == skipFirst || i == skipFirstLong|| i == skipSecond || i == skipSecondLong || i == skipThird || i == skipThirdLong || i == skipFourth){
+            bridgeNumber[i] = bridges.create(roadStart+(roadPositionMod*i), config.height - 300, 'bridge').setScale(4);
+            bridgeNumber[i].setBounceY(0);
+            bridgeNumber[i].body.enable = false;
+            bridgeNumber[i].setCollideWorldBounds(true);
+            bridgeNumber[i].setImmovable();
+        }
+        else{
+            continue;
+        }
+    }
+
+    //  The score
+    scoreText = this.add.text(16, 16, 'score: ' + score, { fontSize: '32px', fill: '#000' });
+    scoreText = this.add.text(200, 16, 'letter: ' + abc[testLetter]._letterName, { fontSize: '32px', fill: '#000' });
+
+    //  Collide with the elements
+    this.physics.add.collider(player, platforms);
+    this.physics.add.collider(player, bridges);
+    this.physics.add.collider(bridges, platforms);
+    this.physics.add.collider(bridges, bridges);
+    player.setCollideWorldBounds(true);
+
+    timedEvent = this.time.delayedCall(1000, startTruck, [], this);
+}
+
+function update ()
+{
+    var valueField = document.getElementById('input');
+    valueField.focus();
+
+    this.input.on('pointerdown', startTruck, this);
+
+    if (valueField.value.toLowerCase() == abc[testLetter]._letterName){
+        toggleBody();
+        valueField.value='';
+    }
+    else{
+        valueField.value='';
+    }
+    if (player.x > 350 && player.y < 300) {
+        player.setVelocityX(300);
+    }
+    if (player.x > 1300){
+        this.scene.restart();
+        score = score + 10;
+        if (testLetter < 25){
+            testLetter++;
+        }
+        else{
+            testLetter = 0;
+            truckVelocity = 50;
+        }
+    }
+    if (player.y > 382){
+        this.scene.restart();
+        testLetter = 0;
+        score = 0;
+    }
+    console.log(player.y);
+}
+
+function toggleBody() {
+    for (var i = 0; i < 20; i++){
+            if(i == skipFirst || i == skipFirstLong|| i == skipSecond || i == skipSecondLong || i == skipThird || i == skipThirdLong || i == skipFourth){
+                if (bridgeNumber[i].body.enable)  {
+                    bridgeNumber[i].body.enable = false;
+            }
+            else  {
+                bridgeNumber[i].body.enable = true;
+            }
+        }
+        else { continue; }
+    }
+}
+
+function startTruck(pointer){
+    player.setVelocityX(truckVelocity);
+}
+
+    </script>
+
+</body>
+</html>
